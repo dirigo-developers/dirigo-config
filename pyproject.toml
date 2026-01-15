@@ -1,0 +1,16 @@
+[build-system]
+requires = ["setuptools>=61.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "dirigo-config"
+version = "0.0.1"
+description = "Tool to configure hardware for use in Dirigo"
+authors = [
+    {name = "T. D. Weber", email = "tweber@mit.edu"}
+]
+license = {text = "MIT"}
+dependencies = [
+    "dirigo",
+    "customtkinter"
+]
