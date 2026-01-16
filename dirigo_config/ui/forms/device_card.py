@@ -139,11 +139,21 @@ class DeviceCard(ctk.CTkFrame):
             )
             self.entry_point_var.set("(no entry points found)")
 
+    def get_name(self) -> str | None:
+        txt = (self.name_entry.get() or "").strip()
+        return txt or None
+
     def get_kind(self) -> str | None:
         label = self.kind_var.get()
         if label in ("", KIND_PLACEHOLDER):
             return None
         return self._label_to_kind[label]
+    
+    def get_entry_point(self) -> str | None:
+        ep = self.entry_point_var.get()
+        if ep in ("", EP_PLACEHOLDER, "(none)", "(no entry points found)"):
+            return None
+        return ep
 
 
 

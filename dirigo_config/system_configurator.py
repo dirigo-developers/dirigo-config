@@ -1,12 +1,22 @@
-import customtkinter as ctk
+import re
 
-from dirigo.config.system_config import SystemMetadata
+import customtkinter as ctk
+import toml
+from dirigo.config.system_config import SystemMetadata, DeviceDef, SystemConfig
+from dirigo.components.io import config_path
 
 from dirigo_config.provenance import generated_by_string
 from dirigo_config.ui.forms.pydantic_form import build_form_from_model
 from dirigo_config.ui.forms.device_card import DeviceCard
 from dirigo_config.discovery.devices import discover_kinds_and_groups
 
+
+
+def _slugify(s: str) -> str:
+    s = (s or "").strip().lower()
+    s = re.sub(r"\s+", "_", s)
+    s = re.sub(r"[^a-z0-9_]+", "", s)
+    return s or "system"
 
 
 def main() -> None:
@@ -24,8 +34,6 @@ def main() -> None:
     page = ctk.CTkScrollableFrame(
         master=app,
         corner_radius=12,
-        # label_text="System Configuration",
-        # label_font=ctk.CTkFont(size=16, weight="bold"),
     )
     page.grid(row=0, column=0, sticky="nsew", padx=16, pady=16)
     page.grid_columnconfigure(0, weight=1)
@@ -54,6 +62,7 @@ def main() -> None:
     meta_frame.grid(row=1, column=0, sticky="ew", padx=12, pady=(0, 12))
 
     # ---------- Devices section ----------
+    device_cards: list[DeviceCard] = []
     kind_to_group = discover_kinds_and_groups()
 
     devices_title = ctk.CTkLabel(page, text="Devices", font=ctk.CTkFont(size=15, weight="bold"))
@@ -88,6 +97,7 @@ def main() -> None:
                 device_number = device_count,
                 kind_to_group = kind_to_group,
             )
+            device_cards.append(card)
             card.pack(fill="x", expand=True, padx=0, pady=0)
 
             # Create the next "Add Device" row just below this card
@@ -107,10 +117,94 @@ def main() -> None:
     # Put the first "Add Device" row where the first device card will go
     make_add_row(next_row)
 
-     # ---------- Footer actions ----------
+    # ---------- Footer actions ----------
+    footer.grid_columnconfigure(0, weight=1)  # status
+    footer.grid_columnconfigure(1, weight=1)  # filename entry expands
+    footer.grid_columnconfigure(2, weight=0)  # export button
+
+    status = ctk.CTkLabel(
+        footer,
+        text="",
+        text_color=("gray30", "gray70"),
+    )
+    status.grid(row=0, column=0, sticky="w", padx=12, pady=12)
+
+    # Filename entry
+    default_filename = f"{_slugify(system_metadata.name)}.system.toml"
+    filename_var = ctk.StringVar(value=default_filename)
+
+    filename_entry = ctk.CTkEntry(
+        footer,
+        textvariable=filename_var,
+        placeholder_text="e.g. my_system.system.toml",
+    )
+    filename_entry.grid(row=0, column=1, sticky="ew", padx=12, pady=12)
+
     def on_export_clicked() -> None:
-        # TODO: wire to export logic
-        print("Export clicked (TODO)")
+        # Get filename from footer entry
+        path = config_path() / filename_var.get().strip()
+        
+        # ---- Build SystemMetadata from form getters (most up-to-date values)
+        meta_values = {k: get() for k, get in meta_getters.items()}
+        metadata = SystemMetadata(
+            **meta_values,
+            generated_by=generated_by_string(),  # injected provenance
+        )
+
+        # ---- Build DeviceDefs from current cards
+        devices: list[DeviceDef] = []
+        for i, card in enumerate(device_cards, start=1):
+            name = card.get_name()
+            kind = card.get_kind()
+            entry_point = card.get_entry_point()
+
+            # Skip incomplete cards (or you can show an error instead)
+            if not (name and kind and entry_point):
+                continue
+
+            devices.append(
+                DeviceDef(
+                    name=name,
+                    kind=kind,
+                    entry_point=entry_point,
+                    config={},  # TODO later: introspected config
+                )
+            )
+
+        system = SystemConfig(
+            metadata=metadata,
+            devices=devices,
+        )
+
+        # ---- Dump with provenance included (override Field(exclude=True))
+        data = system.model_dump(
+            exclude_none=True,
+            include={
+                "schema_version": True,
+                "metadata": {
+                    "name": True,
+                    "version": True,
+                    "notes": True,
+                    "created_at": True,
+                    # explicitly include excluded provenance fields
+                    "dirigo_version": True,
+                    "generated_by": True,
+                },
+                "devices": True,
+            },
+        )
+
+        # Optional: explicit type marker (very useful once you have spec/profile TOMLs)
+        data["config_type"] = "dirigo.system"
+
+        try:
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_text(toml.dumps(data), encoding="utf-8")
+        except OSError as e:
+            status.configure(text=f"Export failed: {e}")
+            return
+
+        status.configure(text=f"Exported: {path.name}")
 
     export_btn = ctk.CTkButton(
         footer,
@@ -118,7 +212,7 @@ def main() -> None:
         width=160,
         command=on_export_clicked,
     )
-    export_btn.grid(row=0, column=1, sticky="e", padx=12, pady=12)
+    export_btn.grid(row=0, column=2, sticky="e", padx=12, pady=12)
 
 
     app.mainloop()
