@@ -3,7 +3,12 @@ from typing import Dict
 
 from dirigo.config.system_config import DeviceDef
 
-from dirigo_config.discovery.devices import discover_entry_point_names
+from dirigo_config.discovery.devices import (
+    discover_entry_point_names, load_device_class,
+    EntryPointNotFound, EntryPointNotUnique, EntryPointInvalidType
+)
+from dirigo_config.ui.forms.pydantic_form import build_form_from_model
+
 
 
 NAME_DESC = DeviceDef.model_fields["name"].description or ""
@@ -91,14 +96,26 @@ class DeviceCard(ctk.CTkFrame):
         self.entry_point_var = ctk.StringVar(value=EP_PLACEHOLDER)
         self.entry_point_menu = ctk.CTkOptionMenu(
             self, 
-            values=[EP_PLACEHOLDER],
-            variable=self.entry_point_var
+            values   = [EP_PLACEHOLDER],
+            variable = self.entry_point_var,
+            command  = self._on_name_change
         )
         self.entry_point_menu.grid(row=row, column=1, sticky="ew", padx=12, pady=6)
         row += 1
         self._add_help(row, EP_DESC)
         row += 1
         self.entry_point_menu.configure(state="disabled")
+
+        # ---------- Config (auto-generated) ----------
+        self.config_container = ctk.CTkFrame(self, corner_radius=12)
+        self.config_container.grid(row=row, column=0, columnspan=2, sticky="ew", padx=12, pady=(6, 12))
+        self.config_container.grid_columnconfigure(0, weight=1)
+
+        self._config_model_cls = None
+        self._config_getters = {}
+
+        self._set_config_placeholder("Select an entry point to configure this device.")
+        row += 1
 
     def _add_help(self, row: int, text: str) -> None:
         if not text:
@@ -112,6 +129,18 @@ class DeviceCard(ctk.CTkFrame):
             wraplength=520,
         )
         help_label.grid(row=row, column=1, sticky="w", padx=12, pady=(0, 6))
+
+    def _set_config_placeholder(self, text: str) -> None:
+        for child in self.config_container.winfo_children():
+            child.destroy()
+        lbl = ctk.CTkLabel(self.config_container, text=text, text_color=("gray30", "gray70"))
+        lbl.grid(row=0, column=0, sticky="w", padx=12, pady=12)
+        self._config_model_cls = None
+        self._config_getters = {}
+
+    def _clear_config_area(self) -> None:
+        for child in self.config_container.winfo_children():
+            child.destroy()
 
     def _on_kind_change(self, selected_label: str) -> None:
         if selected_label == KIND_PLACEHOLDER:
@@ -139,6 +168,45 @@ class DeviceCard(ctk.CTkFrame):
             )
             self.entry_point_var.set("(no entry points found)")
 
+    def _on_name_change(self, selected_label: str) -> None:
+        self._clear_config_area()
+
+        kind = self.get_kind()
+        if kind is None:
+            self._set_config_placeholder("Select a kind first.")
+            return
+        
+        group = self.kind_to_group.get(kind, "")
+        if not group:
+            self._set_config_placeholder("Internal error: could not resolve entry point group.")
+            return
+
+        if selected_label in ("", EP_PLACEHOLDER, "(no entry points found)"):
+            self._set_config_placeholder("Select an entry point to configure this device.")
+            return
+
+        try:
+            device_cls = load_device_class(group, selected_label)
+        except (EntryPointNotFound, EntryPointNotUnique, EntryPointInvalidType) as e:
+            self._set_config_placeholder(str(e))
+            return
+
+        model_cls = getattr(device_cls, "config_model", None)
+        if model_cls is None:
+            self._set_config_placeholder("This device has no configurable fields.")
+            return
+        
+        # Build the auto form
+        form_frame, getters, _ = build_form_from_model(
+            parent    = self.config_container,  # type: ignore
+            model_cls = model_cls,
+            instance  = None,
+        )
+        form_frame.grid(row=1, column=0, sticky="ew", padx=0, pady=0)
+
+        self._config_model_cls = model_cls
+        self._config_getters = getters
+
     def get_name(self) -> str | None:
         txt = (self.name_entry.get() or "").strip()
         return txt or None
@@ -156,8 +224,3 @@ class DeviceCard(ctk.CTkFrame):
         return ep
 
 
-
-    # ---- future hooks ----
-    # def to_device_def(self):
-    #     """Return a DeviceDef instance (later)."""
-    #     ...

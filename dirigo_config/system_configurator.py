@@ -1,7 +1,6 @@
 import re
 
 import customtkinter as ctk
-import toml
 from dirigo.config.system_config import SystemMetadata, DeviceDef, SystemConfig
 from dirigo.components.io import config_path
 
@@ -25,8 +24,8 @@ def main() -> None:
 
     app = ctk.CTk()
     app.title("Dirigo System Configurator")
-    app.geometry("900x650")
-    app.minsize(700, 450)
+    app.geometry("600x800")
+    app.minsize(600, 600)
 
     app.grid_rowconfigure(0, weight=1)
     app.grid_columnconfigure(0, weight=1)
@@ -52,10 +51,10 @@ def main() -> None:
     meta_title.grid(row=0, column=0, sticky="w", padx=12, pady=(12, 6))
 
     # Create an instance with configurator provenance injected
-    system_metadata = SystemMetadata(generated_by=generated_by_string())
+    system_metadata = SystemMetadata()
 
     meta_frame, meta_getters, _ = build_form_from_model(
-        parent      = page,
+        parent      = page,                                     # type: ignore
         model_cls   = SystemMetadata,
         instance    = system_metadata,
     )
@@ -146,10 +145,7 @@ def main() -> None:
         
         # ---- Build SystemMetadata from form getters (most up-to-date values)
         meta_values = {k: get() for k, get in meta_getters.items()}
-        metadata = SystemMetadata(
-            **meta_values,
-            generated_by=generated_by_string(),  # injected provenance
-        )
+        system_metadata = SystemMetadata(**meta_values)
 
         # ---- Build DeviceDefs from current cards
         devices: list[DeviceDef] = []
@@ -171,35 +167,15 @@ def main() -> None:
                 )
             )
 
-        system = SystemConfig(
-            metadata=metadata,
-            devices=devices,
+        system_config = SystemConfig(
+            generated_by = generated_by_string(),  # injected provenance
+            system       = system_metadata,
+            devices      = devices,
         )
-
-        # ---- Dump with provenance included (override Field(exclude=True))
-        data = system.model_dump(
-            exclude_none=True,
-            include={
-                "schema_version": True,
-                "metadata": {
-                    "name": True,
-                    "version": True,
-                    "notes": True,
-                    "created_at": True,
-                    # explicitly include excluded provenance fields
-                    "dirigo_version": True,
-                    "generated_by": True,
-                },
-                "devices": True,
-            },
-        )
-
-        # Optional: explicit type marker (very useful once you have spec/profile TOMLs)
-        data["config_type"] = "dirigo.system"
 
         try:
             path.parent.mkdir(parents=True, exist_ok=True)
-            path.write_text(toml.dumps(data), encoding="utf-8")
+            path.write_text(system_config.to_toml(), encoding="utf-8")
         except OSError as e:
             status.configure(text=f"Export failed: {e}")
             return
