@@ -1,7 +1,7 @@
 from typing import Dict, List
 from importlib.metadata import entry_points
 
-from dirigo.hw_interfaces.hw_interface import HardwareInterface
+from dirigo.hw_interfaces.hw_interface import Device
 
 
 DIRIGO_DEVICE_PREFIX = "dirigo.devices."
@@ -50,7 +50,7 @@ def discover_entry_point_names(group: str) -> List[str]:
     return sorted({ep.name for ep in items})
 
 
-def load_device_class(group: str, name: str) -> type[HardwareInterface]:
+def load_device_class(group: str, name: str) -> type[Device]:
     """
     Load the entry point object for (group, name).
     """
@@ -74,10 +74,10 @@ def load_device_class(group: str, name: str) -> type[HardwareInterface]:
             f"Entry point {group!r}:{name!r} loaded {type(obj)!r}, expected a class."
         )
 
-    if not issubclass(obj, HardwareInterface):
+    if not issubclass(obj, Device):
         raise EntryPointInvalidType(
             f"Entry point {group!r}:{name!r} loaded {obj.__module__}.{obj.__name__}, "
-            f"which is not a subclass of HardwareInterface."
+            f"which is not a subclass of Device."
         )
 
     return obj

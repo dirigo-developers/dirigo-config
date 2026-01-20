@@ -25,11 +25,6 @@ def _kind_to_label(kind: str) -> str:
     return kind.replace("_", " ").capitalize()
 
 
-def _label_to_kind(label: str) -> str:
-    # "Line camera" -> "line_camera"
-    return label.lower().replace(" ", "_")
-
-
 class DeviceCard(ctk.CTkFrame):
     def __init__(
         self,
@@ -153,22 +148,28 @@ class DeviceCard(ctk.CTkFrame):
 
         kind = self._label_to_kind[selected_label]
         group = self.kind_to_group.get(kind, "")
-        eps = discover_entry_point_names(group) if group else []
+        ep_names = discover_entry_point_names(group) if group else []
 
-        if eps:
+        if ep_names:
+            self._title_to_ep: dict[str, str] = {}
+            for ep_name in ep_names:
+                cls = load_device_class(group, ep_name)
+                title = cls.title or ep_name
+                self._title_to_ep[title] = ep_name
+
             self.entry_point_menu.configure(
-                values=[EP_PLACEHOLDER] + eps,
-                state="normal",
+                values = [EP_PLACEHOLDER] + list(self._title_to_ep.keys()),
+                state  = "normal",
             )
             self.entry_point_var.set(EP_PLACEHOLDER)
         else:
             self.entry_point_menu.configure(
-                values=["(no entry points found)"],
-                state="disabled",
+                values = ["(no entry points found)"],
+                state  = "disabled",
             )
             self.entry_point_var.set("(no entry points found)")
 
-    def _on_name_change(self, selected_label: str) -> None:
+    def _on_name_change(self, selected_title: str) -> None:
         self._clear_config_area()
 
         kind = self.get_kind()
@@ -181,12 +182,12 @@ class DeviceCard(ctk.CTkFrame):
             self._set_config_placeholder("Internal error: could not resolve entry point group.")
             return
 
-        if selected_label in ("", EP_PLACEHOLDER, "(no entry points found)"):
+        if selected_title in ("", EP_PLACEHOLDER, "(no entry points found)"):
             self._set_config_placeholder("Select an entry point to configure this device.")
             return
 
         try:
-            device_cls = load_device_class(group, selected_label)
+            device_cls = load_device_class(group, self._title_to_ep[selected_title])
         except (EntryPointNotFound, EntryPointNotUnique, EntryPointInvalidType) as e:
             self._set_config_placeholder(str(e))
             return
