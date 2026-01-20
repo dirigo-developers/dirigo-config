@@ -42,6 +42,12 @@ def _field_default_to_str(finfo: Any) -> str:
     return str(default)
 
 
+def _ui_hidden(finfo) -> bool:
+    extra = finfo.json_schema_extra or {}
+    ui = extra.get("ui") or {}
+    return bool(ui.get("hidden", False))
+
+
 def build_form_from_model(
     parent: ctk.CTkBaseClass,
     model_cls: type[BaseModel],
@@ -65,6 +71,8 @@ def build_form_from_model(
     row = 0
     for field_name, finfo in model_cls.model_fields.items():
         if finfo.exclude:
+            continue
+        if _ui_hidden(finfo):
             continue
 
         ann = finfo.annotation
