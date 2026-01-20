@@ -138,6 +138,8 @@ class DeviceCard(ctk.CTkFrame):
             child.destroy()
 
     def _on_kind_change(self, selected_label: str) -> None:
+        self._clear_config_area()
+        
         if selected_label == KIND_PLACEHOLDER:
             self.entry_point_menu.configure(
                 values=[EP_PLACEHOLDER],
